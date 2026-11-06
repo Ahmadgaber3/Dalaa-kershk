@@ -238,7 +238,7 @@
             height: 32px;
             background: var(--accent);
             border-radius: 10px;
-            display: flex;
+            display: none;
             align-items: center;
             justify-content: center;
             cursor: pointer;
@@ -1129,7 +1129,7 @@
                         <span style="font-size: 1.25rem;">🛒</span>
                     </div>
                 </div>
-                <button class="install-pwa-btn" id="installPwaBtn" onclick="triggerUniversalInstall()" style="display: flex !important;">
+                <button class="install-pwa-btn" id="installPwaBtn" onclick="triggerUniversalInstall()">
                     <span>📲</span>
                     <span>تثبيت</span>
                 </button>
@@ -1142,7 +1142,9 @@
         <div class="category-nav" id="catNav"></div>
     </header>
 
-    <div id="menuList" class="menu-list"></div>
+    <div id="menuList" class="menu-list">
+        <p style="text-align:center; padding:30px; color:#555;">جاري تحميل المنيو...</p>
+    </div>
 
     <div class="success-modal" id="successModal">
         <div class="success-card">
@@ -1420,29 +1422,6 @@
         </div>
     </div>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-        import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, onSnapshot, addDoc, deleteDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-
-        const firebaseConfig = {
-          apiKey: "AIzaSyB2-vW_IBONJS6pbY5p683QGgwSWgT1Y-c",
-          authDomain: "crepe-hekaya.firebaseapp.com",
-          projectId: "crepe-hekaya",
-          storageBucket: "crepe-hekaya.firebasestorage.app",
-          messagingSenderId: "802230455427",
-          appId: "1:802230455427:web:fe93bcaa93a624a6e14736",
-          measurementId: "G-62N7519GFH"
-        };
-
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-
-        window.db = db;
-        window.firebaseModules = { doc, getDoc, setDoc, updateDoc, collection, onSnapshot, addDoc, deleteDoc, getDocs };
-        
-        window.dispatchEvent(new Event('firebase-ready'));
-    </script>
-
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
@@ -1465,9 +1444,6 @@
             if (isRunningInsidePWA() || localStorage.getItem('app_installed_locally') === 'true') {
                 if (installBtn) installBtn.style.setProperty('display', 'none', 'important');
                 return true;
-            }
-            if (installBtn) {
-                installBtn.style.setProperty('display', 'flex', 'important');
             }
             return false;
         }
@@ -1509,7 +1485,8 @@
         });
 
         const IMAGES_PATH = "./images/"; 
-        const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRCP1lq1t5_V8D_zBYftmQQumEJO2uYJpJwt9ztTYB4DLxwqpexNCUd4c5sxhH-57MU8OPg7VZ2RlllK70/pub?output=csv";
+        // تم تعديل اللينك ده ليكون مطابق للصورة اللي بعتها
+        const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRCP1lq1t5_V8D_zBYftmQQumEJO2uYJpJwt9ztTYB4DLxwpexNCUd4c5sxhH-57MU8OPg7VZ2RK70/pub?output=csv";
 
         const deliveryAreasMap = [
             { name: "بورفؤاد", fee: 20 },
@@ -1609,13 +1586,7 @@
         let currentTotal = 0; 
         let selectedOrderType = 'delivery';
         let itemStatusMap = {}; 
-        let orderLogsList = [];
         let currentActiveCategory = null;
-
-        let currentActiveChatOrderId = null;
-        let currentChatUserType = 'admin'; 
-        let chatUnsubscribe = null;
-        let clientChatListenerUnsub = null;
 
         let singleBranchData = { 
             id: 'main', 
@@ -1626,10 +1597,6 @@
             displayPhone2: '01115860698',
             complaintPhone: '01222927092'
         };
-
-        let menuUnsubscribe = null;
-        let realtimeMenuUnsubscribe = null;
-        let activeChatListeners = {};
 
         function parseCSVLine(line) {
             let result = [];
@@ -1660,12 +1627,16 @@
             try {
                 const freshUrl = GOOGLE_SHEET_CSV_URL + '&t=' + Date.now();
                 const response = await fetch(freshUrl);
-                if (!response.ok) throw new Error("تعذر جلب ملف الشيت");
+                
+                if (!response.ok) throw new Error("HTTP error " + response.status);
                 
                 const csvText = await response.text();
                 const lines = csvText.split(/\r?\n/).filter(line => line.trim().length > 0);
                 
-                if (lines.length <= 1) return [];
+                if (lines.length <= 1) {
+                    console.warn("الشيت فاضي أو مفيش صفوف بيانات.");
+                    return [];
+                }
 
                 const items = [];
                 for (let i = 1; i < lines.length; i++) {
@@ -1726,61 +1697,8 @@
                 return items;
             } catch (err) {
                 console.error("خطأ أثناء جلب وتوزيع بيانات الشيت:", err);
+                document.getElementById('menuList').innerHTML = `<p style="text-align:center; padding:30px; color:red; font-weight:bold;">تعذر تحميل المنيو. يرجى التأكد من لينك الشيت أو مراجعة الاتصال بالإنترنت.</p>`;
                 return [];
-            }
-        }
-
-        function listenToRealtimeMenu() {
-            const { doc, onSnapshot } = window.firebaseModules;
-            const db = window.db;
-
-            if (realtimeMenuUnsubscribe) realtimeMenuUnsubscribe();
-
-            realtimeMenuUnsubscribe = onSnapshot(doc(db, "menu_data", "main_menu"), async (docSnap) => {
-                if (docSnap.exists() && docSnap.data().items && docSnap.data().items.length > 0) {
-                    const newItems = docSnap.data().items.filter(item => {
-                        const cat = item.category ? item.category.trim().toLowerCase() : '';
-                        return !cat.includes('عروض') && !cat.includes('العروض') && !cat.includes('offer');
-                    });
-                    
-                    if (JSON.stringify(newItems) !== JSON.stringify(menuData)) {
-                        menuData = newItems;
-                        preloadImages(menuData);
-                        renderNav();
-                        if (document.getElementById('statusModal').style.display === 'flex') {
-                            renderAdminItemsList();
-                        }
-                    }
-                }
-            }, (error) => {
-                console.error("خطأ في الاتصال بالفايربيز:", error);
-            });
-        }
-
-        async function autoSyncSheetInBackground() {
-            try {
-                const freshSheetData = await fetchMenuFromGoogleSheet();
-                if (freshSheetData && freshSheetData.length > 0) {
-                    const sheetStr = JSON.stringify(freshSheetData);
-                    const currentStr = JSON.stringify(menuData);
-                    
-                    if (sheetStr !== currentStr) {
-                        const { doc, setDoc } = window.firebaseModules;
-                        const db = window.db;
-                        await setDoc(doc(db, "menu_data", "main_menu"), {
-                            items: freshSheetData,
-                            lastUpdated: Date.now()
-                        });
-                        menuData = freshSheetData;
-                        preloadImages(menuData);
-                        renderNav();
-                        if (document.getElementById('statusModal').style.display === 'flex') {
-                            renderAdminItemsList();
-                        }
-                    }
-                }
-            } catch (e) {
-                console.error("خطأ في المزامنة التلقائية للشيت:", e);
             }
         }
 
@@ -1825,42 +1743,23 @@
             }, intervalTime);
         }
 
-        function listenToBranchMenuStatus() {
-            if (menuUnsubscribe) menuUnsubscribe();
+        async function loadMenu() {
+            startCreativeCounter();
+            renderFooterBranches();
+            renderFooterComplaints();
+
+            const freshSheetData = await fetchMenuFromGoogleSheet();
             
-            const { doc, onSnapshot } = window.firebaseModules;
-            const db = window.db;
+            if (freshSheetData && freshSheetData.length > 0) {
+                menuData = freshSheetData;
+                preloadImages(menuData).then(() => {
+                    renderNav();
+                });
+            }
 
-            menuUnsubscribe = onSnapshot(doc(db, "menu_status", singleBranchData.id), (docSnap) => {
-                if (docSnap.exists()) {
-                    itemStatusMap = docSnap.data();
-                } else {
-                    itemStatusMap = {};
-                }
-                if (menuData.length > 0 && currentActiveCategory) {
-                    filterCat(currentActiveCategory);
-                }
-            });
-        }
-
-        function listenToContactsSettings() {
-            const { doc, onSnapshot } = window.firebaseModules;
-            const db = window.db;
-
-            onSnapshot(doc(db, "settings", "contacts"), (docSnap) => {
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    if (data.branches && data.branches.length > 0) {
-                        const bUpdated = data.branches[0];
-                        singleBranchData.orderPhone = bUpdated.orderPhone || singleBranchData.orderPhone;
-                        singleBranchData.displayPhone1 = bUpdated.displayPhone1 || singleBranchData.displayPhone1;
-                        singleBranchData.displayPhone2 = bUpdated.displayPhone2 || singleBranchData.displayPhone2;
-                        singleBranchData.complaintPhone = bUpdated.complaintPhone || singleBranchData.complaintPhone;
-                    }
-                    renderFooterBranches();
-                    renderFooterComplaints();
-                }
-            });
+            setTimeout(() => {
+                document.getElementById('splash-screen').classList.add('splash-hidden');
+            }, 3000);
         }
 
         function renderFooterComplaints() {
@@ -1879,241 +1778,6 @@
                     </a>
                 </div>
             `;
-        }
-
-        function triggerSystemNotification(title, body) {
-            try {
-                if ('Notification' in window && Notification.permission === 'granted') {
-                    if (navigator.serviceWorker && navigator.serviceWorker.ready) {
-                        navigator.serviceWorker.ready.then(reg => {
-                            reg.showNotification(title, {
-                                body: body,
-                                icon: './images/logooo.png',
-                                badge: './images/logooo.png',
-                                vibrate: [400, 150, 400, 150, 400],
-                                tag: 'crepe-alert-' + Date.now(),
-                                renotify: true
-                            });
-                        }).catch(() => {});
-                    } else {
-                        new Notification(title, { body: body, icon: './images/logooo.png' });
-                    }
-                }
-            } catch (e) {}
-        }
-
-        window.addEventListener('firebase-ready', async () => {
-            const { doc, onSnapshot, collection } = window.firebaseModules;
-            const db = window.db;
-
-            listenToBranchMenuStatus();
-            listenToContactsSettings();
-            listenToRealtimeMenu();
-            autoSyncSheetInBackground();
-            checkClientSavedOrder();
-
-            let isFirstLoad = true;
-            onSnapshot(collection(db, "orders_log"), (snapshot) => {
-                orderLogsList = [];
-                let hasNewOrder = false;
-                let latestOrderData = null;
-
-                snapshot.forEach((docSnap) => {
-                    const data = docSnap.data();
-                    orderLogsList.push({ id: docSnap.id, ...data });
-                });
-
-                orderLogsList.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-
-                if (!isFirstLoad) {
-                    snapshot.docChanges().forEach(change => {
-                        if (change.type === 'added') {
-                            hasNewOrder = true;
-                            latestOrderData = change.doc.data();
-                        }
-                    });
-
-                    const isVerifiedCashierDevice = localStorage.getItem('is_cashier_device') === 'true';
-
-                    if (hasNewOrder && isVerifiedCashierDevice) {
-                        playHighPriorityOrderAlert();
-                        triggerSystemNotification(
-                            `🔔 أوردر جديد`,
-                            `طلب رقم #${latestOrderData.orderId || ''} للعميل ${latestOrderData.name || ''} بقيمة ${latestOrderData.total || 0} ج.م`
-                        );
-                    }
-                }
-
-                setupBranchChatNotifications();
-                renderAdminOrdersLogs();
-
-                isFirstLoad = false;
-            });
-        });
-
-        function playHighPriorityOrderAlert() {
-            try {
-                const AudioContext = window.AudioContext || window.webkitAudioContext;
-                if (!AudioContext) return;
-                const audioCtx = new AudioContext();
-                if (audioCtx.state === 'suspended') { audioCtx.resume(); }
-                
-                for (let round = 0; round < 3; round++) {
-                    let delayOffset = round * 0.45;
-                    [659.25, 783.99, 987.77, 1318.51].forEach((freq, index) => {
-                        const osc = audioCtx.createOscillator();
-                        const gain = audioCtx.createGain();
-                        osc.type = 'triangle';
-                        osc.frequency.setValueAtTime(freq, audioCtx.currentTime + delayOffset + (index * 0.09));
-                        
-                        gain.gain.setValueAtTime(0.7, audioCtx.currentTime + delayOffset + (index * 0.09));
-                        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + delayOffset + (index * 0.09) + 0.3);
-                        
-                        osc.connect(gain);
-                        gain.connect(audioCtx.destination);
-                        
-                        osc.start(audioCtx.currentTime + delayOffset + (index * 0.09));
-                        osc.stop(audioCtx.currentTime + delayOffset + (index * 0.09) + 0.3);
-                    });
-                }
-            } catch (e) {}
-        }
-
-        function playChatNotificationSound() {
-            try {
-                const AudioContext = window.AudioContext || window.webkitAudioContext;
-                if (!AudioContext) return;
-                const audioCtx = new AudioContext();
-                if (audioCtx.state === 'suspended') { audioCtx.resume(); }
-
-                const osc1 = audioCtx.createOscillator();
-                const osc2 = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-
-                osc1.type = 'sine';
-                osc2.type = 'triangle';
-
-                osc1.frequency.setValueAtTime(950, audioCtx.currentTime);
-                osc1.frequency.exponentialRampToValueAtTime(1450, audioCtx.currentTime + 0.15);
-
-                osc2.frequency.setValueAtTime(1900, audioCtx.currentTime);
-                osc2.frequency.exponentialRampToValueAtTime(2900, audioCtx.currentTime + 0.15);
-
-                gain.gain.setValueAtTime(0.85, audioCtx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.28);
-
-                osc1.connect(gain);
-                osc2.connect(gain);
-                gain.connect(audioCtx.destination);
-
-                osc1.start(audioCtx.currentTime);
-                osc2.start(audioCtx.currentTime);
-
-                osc1.stop(audioCtx.currentTime + 0.28);
-                osc2.stop(audioCtx.currentTime + 0.28);
-            } catch (e) {}
-        }
-
-        function setupBranchChatNotifications() {
-            const isVerifiedCashierDevice = localStorage.getItem('is_cashier_device') === 'true';
-            if (!isVerifiedCashierDevice) return;
-
-            const { collection, onSnapshot } = window.firebaseModules;
-            const db = window.db;
-
-            orderLogsList.forEach(order => {
-                const orderId = String(order.orderId);
-                if (!activeChatListeners[orderId]) {
-                    let isChatFirstLoad = true;
-                    activeChatListeners[orderId] = onSnapshot(collection(db, "order_chats", orderId, "messages"), (snapshot) => {
-                        if (!isChatFirstLoad) {
-                            snapshot.docChanges().forEach(change => {
-                                if (change.type === 'added') {
-                                    const msgData = change.doc.data();
-                                    if (msgData.sender === 'client') {
-                                        playChatNotificationSound();
-                                        triggerSystemNotification(
-                                            `💬 رسالة جديدة في أوردر #${orderId}`,
-                                            `${msgData.text || 'رسالة جديدة من العميل'}`
-                                        );
-                                    }
-                                }
-                            });
-                        }
-                        isChatFirstLoad = false;
-                    });
-                }
-            });
-        }
-
-        function checkClientSavedOrder() {
-            const savedOrderId = localStorage.getItem('my_last_order_id');
-            const headerChatBtn = document.getElementById('clientHeaderChatBtn');
-            if (savedOrderId) {
-                if (headerChatBtn) {
-                    headerChatBtn.style.display = 'flex';
-                    headerChatBtn.title = `متابعة شات أوردر #${savedOrderId}`;
-                }
-                listenToClientChatMessages(savedOrderId);
-            } else {
-                if (headerChatBtn) headerChatBtn.style.display = 'none';
-                if (clientChatListenerUnsub) {
-                    clientChatListenerUnsub();
-                    clientChatListenerUnsub = null;
-                }
-            }
-        }
-
-        function listenToClientChatMessages(orderId) {
-            const { collection, onSnapshot } = window.firebaseModules;
-            const db = window.db;
-            if (clientChatListenerUnsub) clientChatListenerUnsub();
-
-            let isFirst = true;
-            clientChatListenerUnsub = onSnapshot(collection(db, "order_chats", String(orderId), "messages"), (snapshot) => {
-                if (!isFirst) {
-                    snapshot.docChanges().forEach(change => {
-                        if (change.type === 'added') {
-                            const data = change.doc.data();
-                            if (data.sender === 'admin') {
-                                playChatNotificationSound();
-                                triggerSystemNotification(
-                                    `💬 رد من المطعم على أوردر #${orderId}`,
-                                    `${data.text || 'رسالة جديدة'}`
-                                );
-                            }
-                        }
-                    });
-                }
-                isFirst = false;
-            });
-        }
-
-        function openClientHeaderChat() {
-            const orderId = localStorage.getItem('my_last_order_id');
-            const orderName = localStorage.getItem('my_last_order_name') || 'عميل';
-            if (orderId) {
-                openInAppChat(orderId, orderName, 'client');
-            }
-        }
-
-        function dismissClientActiveOrder() {
-            if (!confirm("هل تم استلام الأوردر وتريد إنهاء المتابعة وإزالة زر الشات من الأعلى نهائياً؟")) return;
-            localStorage.removeItem('my_last_order_id');
-            localStorage.removeItem('my_last_order_name');
-            checkClientSavedOrder();
-            closeChatModal();
-            alert("تم إغلاق متابعة الأوردر بنجاح. شكراً لطلبك من دلع كرشك!");
-        }
-
-        async function loadMenu() {
-            startCreativeCounter();
-            renderFooterBranches();
-            renderFooterComplaints();
-
-            setTimeout(() => {
-                document.getElementById('splash-screen').classList.add('splash-hidden');
-            }, 3000);
         }
 
         function renderFooterBranches() {
@@ -2249,7 +1913,7 @@
                 btn.classList.remove('added'); 
             }, 2000);
             
-            const fly = document.createElement('div'); fly.className = 'fly-item'; fly.innerHTML = '🥞'; 
+            const fly = document.createElement('div'); fly.className = 'fly-item'; fly.innerHTML = '🍔'; 
             const clickX = e && e.clientX ? e.clientX : window.innerWidth / 2;
             const clickY = e && e.clientY ? e.clientY : window.innerHeight / 2;
             fly.style.left = clickX + 'px'; 
@@ -2396,24 +2060,6 @@
                 ? `المنطقة: ${selectedAreaName} - تفاصيل: ${a || 'لا يوجد'}`
                 : (selectedOrderType === 'delivery' ? a : 'استلام من التيك اواي');
 
-            try {
-                const { collection, addDoc } = window.firebaseModules;
-                const db = window.db;
-                await addDoc(collection(db, "orders_log"), {
-                    orderId: randomOrderId,
-                    name: n,
-                    phone: p,
-                    type: typeLabel,
-                    address: fullAddressText,
-                    itemsText: orderDetailsStr,
-                    total: currentTotal,
-                    timestamp: Date.now(),
-                    dateFormatted: new Date().toLocaleString('ar-EG')
-                });
-            } catch (err) {
-                console.log("Error saving order:", err);
-            }
-
             let purePhone = (singleBranchData.orderPhone || '').replace(/[^0-9]/g, '');
             if (purePhone.startsWith('0')) purePhone = '2' + purePhone;
             else if (!purePhone.startsWith('20') && purePhone.length === 11) purePhone = '2' + purePhone;
@@ -2452,10 +2098,7 @@
         }
 
         function openAdminPanel() {
-            document.getElementById('adminPassInput').value = '';
-            document.getElementById('adminAuthView').style.display = 'block';
-            document.getElementById('adminDashboardView').style.display = 'none';
-            document.getElementById('adminModal').style.display = 'flex';
+            alert("لوحة التحكم تحتاج إلى ربط الفايربيز (Firebase) لتعمل. يرجى إضافته لاحقاً.");
         }
 
         function closeAdminPanel() {
@@ -2463,8 +2106,7 @@
         }
 
         function openOrdersLogDirectly() {
-            document.getElementById('quickOrdersPassInput').value = '';
-            document.getElementById('quickOrdersAuthModal').style.display = 'flex';
+            alert("سجل الطلبات يحتاج إلى ربط الفايربيز (Firebase) ليعمل. يرجى إضافته لاحقاً.");
         }
 
         function closeQuickOrdersAuthModal() {
@@ -2472,44 +2114,11 @@
         }
 
         function verifyQuickOrdersPassword() {
-            const pass = document.getElementById('quickOrdersPassInput').value.trim();
-            if (!pass) return alert("يرجى إدخال كلمة المرور");
-
-            if (pass === "1133") {
-                let authCount = parseInt(localStorage.getItem('cashier_auth_count') || '0');
-                authCount += 1;
-                localStorage.setItem('cashier_auth_count', authCount);
-
-                if (authCount >= 5) {
-                    localStorage.setItem('is_cashier_device', 'true');
-                }
-
-                if ('Notification' in window && Notification.permission !== 'granted') {
-                    Notification.requestPermission();
-                }
-
-                closeQuickOrdersAuthModal();
-                setupBranchChatNotifications();
-                openFloatingModal('logsModal');
-            } else {
-                alert("كلمة المرور غير صحيحة!");
-            }
+            alert("سجل الطلبات يحتاج إلى ربط الفايربيز (Firebase) ليعمل. يرجى إضافته لاحقاً.");
         }
 
         function openFloatingModal(modalId) {
-            const modal = document.getElementById(modalId);
-            if (modal) {
-                modal.style.display = 'flex';
-                if (modalId === 'statusModal') {
-                    fetchAdminBranchItems();
-                }
-                if (modalId === 'logsModal') {
-                    renderAdminOrdersLogs();
-                }
-                if (modalId === 'contactsModal') {
-                    populateContactsAdminFields();
-                }
-            }
+            alert("هذه الميزة تحتاج إلى ربط الفايربيز (Firebase) لتعمل. يرجى إضافته لاحقاً.");
         }
 
         function closeFloatingModal(modalId) {
@@ -2519,368 +2128,59 @@
             }
         }
 
-        function populateContactsAdminFields() {
-            document.getElementById('edit_order_phone').value = singleBranchData.orderPhone.replace(/^20/, '0');
-            document.getElementById('edit_display_phone1').value = singleBranchData.displayPhone1;
-            document.getElementById('edit_display_phone2').value = singleBranchData.displayPhone2;
-            document.getElementById('edit_complaint_phone').value = singleBranchData.complaintPhone;
+        function saveContactsToFirebase() {
+            alert("هذه الميزة تحتاج إلى ربط الفايربيز (Firebase) لتعمل. يرجى إضافته لاحقاً.");
         }
 
-        async function saveContactsToFirebase() {
-            const formatWaPhone = (p) => {
-                let pure = p.replace(/[^0-9]/g, '');
-                if (pure.startsWith('0')) return '2' + pure;
-                if (!pure.startsWith('20') && pure.length === 11) return '2' + pure;
-                return pure;
-            };
+        function fetchAdminBranchItems() {}
 
-            const updatedBranch = { 
-                id: singleBranchData.id, 
-                orderPhone: formatWaPhone(document.getElementById('edit_order_phone').value.trim()), 
-                displayPhone1: document.getElementById('edit_display_phone1').value.trim(),
-                displayPhone2: document.getElementById('edit_display_phone2').value.trim(),
-                complaintPhone: document.getElementById('edit_complaint_phone').value.trim()
-            };
-
-            try {
-                const { doc, setDoc } = window.firebaseModules;
-                const db = window.db;
-                await setDoc(doc(db, "settings", "contacts"), {
-                    branches: [updatedBranch],
-                    lastUpdated: Date.now()
-                });
-
-                alert("✅ تم حفظ وتحديث كافة الأرقام بنجاح!");
-                closeFloatingModal('contactsModal');
-            } catch (err) {
-                console.error("Error saving contacts:", err);
-                alert("حدث خطأ أثناء حفظ الأرقام");
-            }
-        }
-
-        let adminBranchStatusMap = {};
-
-        async function fetchAdminBranchItems() {
-            const { doc, getDoc } = window.firebaseModules;
-            const db = window.db;
-            try {
-                const docSnap = await getDoc(doc(db, "menu_status", singleBranchData.id));
-                if (docSnap.exists()) {
-                    adminBranchStatusMap = docSnap.data();
-                } else {
-                    adminBranchStatusMap = {};
-                }
-                renderAdminItemsList();
-            } catch (e) {
-                console.error("خطأ في جلب بيانات الأصناف:", e);
-            }
-        }
-
-        async function verifyAdminPassword() {
-            const inputPass = document.getElementById('adminPassInput').value.trim();
-
-            if (!inputPass) return alert("يرجى إدخال كلمة المرور");
-
-            try {
-                const { doc, getDoc } = window.firebaseModules;
-                const db = window.db;
-                const passDoc = await getDoc(doc(db, "settings", "password"));
-                
-                const correctPass = passDoc.exists() ? String(passDoc.data().value).trim() : "1234";
-
-                if (inputPass === correctPass) {
-                    
-                    const alreadyVerified = localStorage.getItem('is_cashier_device') === 'true';
-
-                    if (!alreadyVerified) {
-                        let authCount = parseInt(localStorage.getItem('cashier_auth_count') || '0');
-                        authCount += 1;
-                        localStorage.setItem('cashier_auth_count', authCount);
-
-                        if (authCount >= 5) {
-                            localStorage.setItem('is_cashier_device', 'true');
-                            alert(`✅ تم اعتماد هذا الجهاز رسمياً كـ (كاشير). لن تظهر هذه الرسالة مرة أخرى.`);
-                        }
-                    }
-
-                    if ('Notification' in window && Notification.permission !== 'granted') {
-                        Notification.requestPermission();
-                    }
-
-                    document.getElementById('adminPassInput').value = '';
-                    document.getElementById('adminAuthView').style.display = 'none';
-                    document.getElementById('adminDashboardView').style.display = 'block';
-
-                    setupBranchChatNotifications();
-                    fetchAdminBranchItems();
-                } else {
-                    alert("كلمة المرور غير صحيحة!");
-                }
-            } catch (e) {
-                alert("حدث خطأ في الاتصال بقاعدة البيانات");
-            }
+        function verifyAdminPassword() {
+            alert("هذه الميزة تحتاج إلى ربط الفايربيز (Firebase) لتعمل. يرجى إضافته لاحقاً.");
         }
 
         function openSupportWhatsApp() {
             window.open('https://wa.me/201030252806?text=' + encodeURIComponent('مرحباً الدعم الفني، أحتاج لمساعدة في لوحة التحكم.'), '_blank');
         }
 
-        function renderAdminItemsList() {
-            const container = document.getElementById('adminItemsList');
-            if (menuData.length === 0) {
-                container.innerHTML = '<p style="text-align:center; padding:20px;">جاري تحميل الأصناف...</p>';
-                return;
-            }
+        function renderAdminItemsList() {}
 
-            container.innerHTML = menuData.map(item => {
-                let isEnabled = adminBranchStatusMap[item.name] !== false;
-                const safeName = item.name.replace(/'/g, "\\'");
+        function toggleItemStatus(itemName, status) {}
 
-                return `
-                <div class="switch-row">
-                    <span class="switch-label">${item.name} (${item.category})</span>
-                    <label class="switch">
-                        <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="toggleItemStatus('${safeName}', this.checked)">
-                        <span class="slider"></span>
-                    </label>
-                </div>`;
-            }).join('');
-        }
+        function setAllItemsStatus(status) {}
 
-        async function toggleItemStatus(itemName, status) {
-            adminBranchStatusMap[itemName] = status;
-            try {
-                const { doc, setDoc } = window.firebaseModules;
-                const db = window.db;
-                await setDoc(doc(db, "menu_status", singleBranchData.id), adminBranchStatusMap, { merge: true });
-            } catch (e) {
-                console.error("خطأ في تحديث حالة الصنف:", e);
-            }
-        }
-
-        async function setAllItemsStatus(status) {
-            menuData.forEach(item => {
-                adminBranchStatusMap[item.name] = status;
-            });
-            try {
-                const { doc, setDoc } = window.firebaseModules;
-                const db = window.db;
-                await setDoc(doc(db, "menu_status", singleBranchData.id), adminBranchStatusMap);
-                renderAdminItemsList();
-            } catch (e) {
-                console.error("خطأ في تحديث كافة الأصناف:", e);
-            }
-        }
-
-        function renderAdminOrdersLogs() {
-            const container = document.getElementById('adminOrdersLogsList');
-            const countLabel = document.getElementById('currentBranchOrdersCount');
-            if (!container) return;
-
-            let filteredOrders = orderLogsList;
-            let currentViewTitle = `جميع الطلبات: (${filteredOrders.length})`;
-
-            if (countLabel) {
-                countLabel.innerText = currentViewTitle;
-            }
-
-            if (filteredOrders.length === 0) {
-                container.innerHTML = `<p style="text-align:center; padding:30px; color:var(--desc-text); font-weight:800;">لا توجد طلبات مسجلة حتى الآن.</p>`;
-                return;
-            }
-
-            container.innerHTML = filteredOrders.map(order => {
-                const safeCustomerName = (order.name || 'عميل').replace(/'/g, "\\'");
-                const itemsLines = (order.itemsText || '').split('\n').filter(l => l.trim().length > 0);
-                const itemsHtml = itemsLines.map(line => `<li>${line}</li>`).join('');
-
-                return `
-                <div class="order-card-custom">
-                    <div class="order-custom-header">
-                        <div class="order-user-name-box">
-                            <span class="order-user-icon">👤</span>
-                            <span>${order.name || 'عميل بدون اسم'}</span>
-                        </div>
-                        <button class="order-delete-btn-circ" title="حذف الطلب" onclick="deleteSingleOrder('${order.id}')">✕</button>
-                    </div>
-
-                    <div class="order-contact-sub">
-                        <span>📞 <a href="tel:${order.phone}">${order.phone || ''}</a></span>
-                        <span>|</span>
-                        <span>🛵 ${order.type || 'طلب'}</span>
-                        <span>|</span>
-                        <span>📍 ${order.address || 'استلام'}</span>
-                        <span>|</span>
-                        <span style="font-size:0.75rem;">⏱️ ${order.dateFormatted || ''}</span>
-                    </div>
-
-                    <div class="order-items-box-custom">
-                        <ul class="order-items-list-custom">
-                            ${itemsHtml}
-                        </ul>
-                    </div>
-
-                    <div class="order-custom-footer">
-                        <div class="order-total-price-custom">
-                            <span>💰</span>
-                            <span>الإجمالي: ${order.total || 0} ج.م</span>
-                        </div>
-                        <button class="order-chat-btn-custom" onclick="openInAppChat('${order.orderId}', '${safeCustomerName}', 'admin')">
-                            <span>💬</span>
-                            <span>الشات المباشر</span>
-                        </button>
-                    </div>
-                </div>`;
-            }).join('');
-        }
+        function renderAdminOrdersLogs() {}
 
         function openInAppChat(orderId, clientName, userType) {
-            if (!orderId) return;
-            currentActiveChatOrderId = String(orderId);
-            currentChatUserType = userType; 
-
-            document.getElementById('chatTitle').innerText = `محادثة أوردر #${orderId}`;
-            document.getElementById('chatSub').innerText = userType === 'admin' ? `العميل: ${clientName}` : `محادثة حية مع إدارة المطعم`;
-            document.getElementById('chatInputField').value = '';
-
-            const finishBtn = document.getElementById('finishOrderBtn');
-            if (finishBtn) {
-                finishBtn.style.display = userType === 'client' ? 'block' : 'none';
-            }
-
-            document.getElementById('chatModal').style.display = 'flex';
-            listenToChatMessages(currentActiveChatOrderId);
+            alert("شات المطعم يحتاج إلى ربط الفايربيز (Firebase) ليعمل. يرجى إضافته لاحقاً.");
         }
 
         function closeChatModal() {
             document.getElementById('chatModal').style.display = 'none';
-            if (chatUnsubscribe) {
-                chatUnsubscribe();
-                chatUnsubscribe = null;
-            }
         }
 
-        function listenToChatMessages(orderId) {
-            const { collection, onSnapshot } = window.firebaseModules;
-            const db = window.db;
+        function listenToChatMessages(orderId) {}
 
-            if (chatUnsubscribe) chatUnsubscribe();
-
-            const messagesContainer = document.getElementById('chatMessagesArea');
-            messagesContainer.innerHTML = '<p style="text-align:center; padding:15px; color:var(--desc-text); font-weight:700;">جاري تحميل الرسائل...</p>';
-
-            chatUnsubscribe = onSnapshot(collection(db, "order_chats", orderId, "messages"), (snapshot) => {
-                const msgs = [];
-                snapshot.forEach((d) => msgs.push({ id: d.id, ...d.data() }));
-                msgs.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-
-                if (msgs.length === 0) {
-                    messagesContainer.innerHTML = '<p style="text-align:center; padding:20px; color:var(--desc-text); font-weight:700;">لا توجد رسائل سابقة. ابدأ المحادثة الآن!</p>';
-                    return;
-                }
-
-                messagesContainer.innerHTML = msgs.map(m => {
-                    const bubbleClass = m.sender === 'admin' ? 'admin' : 'client';
-                    return `
-                    <div class="chat-bubble ${bubbleClass}">
-                        ${m.text}
-                        <span class="chat-bubble-time">${m.timeFormatted || ''}</span>
-                    </div>`;
-                }).join('');
-
-                messagesContainer.scrollTop = messagesContainer.scrollHeight;
-            });
+        function sendChatMessage() {
+            alert("شات المطعم يحتاج إلى ربط الفايربيز (Firebase) ليعمل. يرجى إضافته لاحقاً.");
         }
 
-        async function sendChatMessage() {
-            const input = document.getElementById('chatInputField');
-            const text = input.value.trim();
-            if (!text || !currentActiveChatOrderId) return;
+        function deleteSingleOrder(orderDocId) {}
 
-            input.value = '';
+        function clearCurrentBranchOrderLogs() {}
 
-            try {
-                const { collection, addDoc } = window.firebaseModules;
-                const db = window.db;
-                await addDoc(collection(db, "order_chats", currentActiveChatOrderId, "messages"), {
-                    text: text,
-                    sender: currentChatUserType,
-                    timestamp: Date.now(),
-                    timeFormatted: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
-                });
-            } catch (e) {
-                console.error("خطأ أثناء إرسال الرسالة:", e);
-            }
+        function updateAdminPassword() {
+            alert("هذه الميزة تحتاج إلى ربط الفايربيز (Firebase) لتعمل. يرجى إضافته لاحقاً.");
         }
 
-        async function deleteSingleOrder(orderDocId) {
-            if (!confirm("هل أنت متأكد من حذف هذا الطلب من السجل؟")) return;
-            try {
-                const { doc, deleteDoc } = window.firebaseModules;
-                const db = window.db;
-                await deleteDoc(doc(db, "orders_log", orderDocId));
-            } catch (e) {
-                alert("حدث خطأ أثناء حذف الطلب");
-            }
+        function checkClientSavedOrder() {}
+
+        function listenToClientChatMessages(orderId) {}
+
+        function openClientHeaderChat() {
+            alert("شات المطعم يحتاج إلى ربط الفايربيز (Firebase) ليعمل. يرجى إضافته لاحقاً.");
         }
 
-        async function clearCurrentBranchOrderLogs() {
-            let filteredOrders = orderLogsList;
-            let label = 'جميع الطلبات';
-
-            if (filteredOrders.length === 0) {
-                return alert(`لا توجد طلبات لحذفها`);
-            }
-
-            if (!confirm(`هل أنت متأكد من رغبتك في مسح كافة الطلبات؟`)) return;
-            try {
-                const { deleteDoc, doc } = window.firebaseModules;
-                const db = window.db;
-                for (let o of filteredOrders) {
-                    await deleteDoc(doc(db, "orders_log", o.id));
-                }
-                alert(`تم مسح الطلبات بنجاح!`);
-            } catch (e) {
-                alert("حدث خطأ أثناء حذف الطلبات");
-            }
-        }
-
-        async function updateAdminPassword() {
-            const currentPass = document.getElementById('currentAdminPass').value.trim();
-            const newPass = document.getElementById('newAdminPass').value.trim();
-            const confirmPass = document.getElementById('confirmAdminPass').value.trim();
-
-            if (!currentPass || !newPass || !confirmPass) {
-                return alert("يرجى ملء جميع الحقول");
-            }
-            if (newPass !== confirmPass) {
-                return alert("كلمة المرور الجديدة غير متطابقة");
-            }
-
-            try {
-                const { doc, getDoc, setDoc } = window.firebaseModules;
-                const db = window.db;
-                const passDoc = await getDoc(doc(db, "settings", "password"));
-                const realCurrent = passDoc.exists() ? String(passDoc.data().value).trim() : "1234";
-
-                if (currentPass !== realCurrent) {
-                    return alert("كلمة المرور الحالية غير صحيحة");
-                }
-
-                await setDoc(doc(db, "settings", "password"), {
-                    value: newPass,
-                    version: Date.now().toString()
-                });
-
-                alert("تم تحديث كلمة المرور بنجاح!");
-                document.getElementById('currentAdminPass').value = '';
-                document.getElementById('newAdminPass').value = '';
-                document.getElementById('confirmAdminPass').value = '';
-                closeFloatingModal('passwordModal');
-            } catch (e) {
-                alert("حدث خطأ أثناء حفظ كلمة المرور الجديدة");
-            }
-        }
+        function dismissClientActiveOrder() {}
 
         loadMenu();
     </script>
