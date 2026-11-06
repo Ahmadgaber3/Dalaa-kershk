@@ -1485,8 +1485,13 @@
         });
 
         const IMAGES_PATH = "./images/"; 
-        // تم تعديل اللينك ده ليكون مطابق للصورة اللي بعتها
+        
+        // اللينك الأصلي
         const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRCP1lq1t5_V8D_zBYftmQQumEJO2uYJpJwt9ztTYB4DLxwpexNCUd4c5sxhH-57MU8OPg7VZ2RK70/pub?output=csv";
+        
+        // هنستخدم وسيط CORS عشان يشتغل على اللوكال هوست
+        const CORS_PROXY = "https://corsproxy.io/?";
+        const FINAL_URL = CORS_PROXY + encodeURIComponent(GOOGLE_SHEET_CSV_URL);
 
         const deliveryAreasMap = [
             { name: "بورفؤاد", fee: 20 },
@@ -1625,7 +1630,7 @@
 
         async function fetchMenuFromGoogleSheet() {
             try {
-                const freshUrl = GOOGLE_SHEET_CSV_URL + '&t=' + Date.now();
+                const freshUrl = FINAL_URL + '&t=' + Date.now();
                 const response = await fetch(freshUrl);
                 
                 if (!response.ok) throw new Error("HTTP error " + response.status);
@@ -1697,7 +1702,7 @@
                 return items;
             } catch (err) {
                 console.error("خطأ أثناء جلب وتوزيع بيانات الشيت:", err);
-                document.getElementById('menuList').innerHTML = `<p style="text-align:center; padding:30px; color:red; font-weight:bold;">تعذر تحميل المنيو. يرجى التأكد من لينك الشيت أو مراجعة الاتصال بالإنترنت.</p>`;
+                document.getElementById('menuList').innerHTML = `<p style="text-align:center; padding:30px; color:red; font-weight:bold;">تعذر تحميل المنيو.<br>تفاصيل الخطأ: ${err.message}</p>`;
                 return [];
             }
         }
