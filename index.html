@@ -1423,15 +1423,15 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
         import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, onSnapshot, addDoc, deleteDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-        // ⚠️ هام: قم بإنشاء مشروع Firebase جديد خاص بمطعم "دلع كرشك" وضع الإعدادات الخاصة به هنا
+        // ⚠️ تم إرجاع الإعدادات القديمة مؤقتاً ليعمل التطبيق فوراً، ويجب تغييرها لمشروعك الجديد لاحقاً
         const firebaseConfig = {
-          apiKey: "YOUR_API_KEY",
-          authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-          projectId: "YOUR_PROJECT_ID",
-          storageBucket: "YOUR_PROJECT_ID.appspot.com",
-          messagingSenderId: "YOUR_SENDER_ID",
-          appId: "YOUR_APP_ID",
-          measurementId: "YOUR_MEASUREMENT_ID"
+          apiKey: "AIzaSyB2-vW_IBONJS6pbY5p683QGgwSWgT1Y-c",
+          authDomain: "crepe-hekaya.firebaseapp.com",
+          projectId: "crepe-hekaya",
+          storageBucket: "crepe-hekaya.firebasestorage.app",
+          messagingSenderId: "802230455427",
+          appId: "1:802230455427:web:fe93bcaa93a624a6e14736",
+          measurementId: "G-62N7519GFH"
         };
 
         const app = initializeApp(firebaseConfig);
@@ -1509,10 +1509,8 @@
         });
 
         const IMAGES_PATH = "./images/"; 
-        // ✅ تم تحديث رابط الشيت الجديد هنا
         const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRCP1lq1t5_V8D_zBYftmQQumEJO2uYJpJwt9ztTYB4DLxwpqexNCUd4c5sxhH-57MU8OPg7VZ2RK70/pub?output=csv";
 
-        // تم تعديل مناطق التوصيل كبداية - يرجى تعديلها حسب مناطق بورفؤاد
         const deliveryAreasMap = [
             { name: "بورفؤاد", fee: 20 },
             { name: "حي الشرق", fee: 30 },
