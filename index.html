@@ -59,6 +59,7 @@
             background-size: cover;
             background-position: center center;
             background-repeat: no-repeat;
+            background-color: var(--bg);
             z-index: 9999;
             display: flex; justify-content: center; align-items: flex-end;
             padding: 0 20px 190px 20px;
@@ -1208,7 +1209,7 @@
                     <div style="background: rgba(230, 81, 0, 0.08); border: 1.5px solid var(--accent); border-radius: 14px; padding: 10px; margin-bottom: 15px; font-weight: 800; font-size: 0.9rem; text-align: center; color: var(--accent);">
                         📍 الإدارة للمطعم
                     </div>
-                    <p style="margin-bottom: 12px; font-weight: 800; font-size: 0.88rem; text-align: center; color: var(--desc-text);">أدخل كلمة المرور للدخول لللوحة:</p>
+                    <p style="margin-bottom: 12px; font-weight: 800; font-size: 0.88rem; text-align: center; color: var(--desc-text);">أدخل كلمة المرور للدخول للوحة:</p>
                     
                     <input type="password" id="adminPassInput" placeholder="كلمة المرور" autofocus>
                     <button onclick="verifyAdminPassword()">دخول لوحة التحكم</button>
@@ -1486,12 +1487,8 @@
 
         const IMAGES_PATH = "./images/"; 
         
-        // اللينك الأصلي
-        const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRCP1lq1t5_V8D_zBYftmQQumEJO2uYJpJwt9ztTYB4DLxwpexNCUd4c5sxhH-57MU8OPg7VZ2RK70/pub?output=csv";
-        
-        // هنستخدم وسيط CORS عشان يشتغل على اللوكال هوست
-        const CORS_PROXY = "https://corsproxy.io/?";
-        const FINAL_URL = CORS_PROXY + encodeURIComponent(GOOGLE_SHEET_CSV_URL);
+        // اللينك المباشر للشيت
+        const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRCP1lq1t5_V8D_zBYftmQQumEJO2uYJpJwt9ztTYB4DLxwpqexNCUd4c5sxhH-57MU8OPg7VZ2RK70/pub?output=csv";
 
         const deliveryAreasMap = [
             { name: "بورفؤاد", fee: 20 },
@@ -1628,83 +1625,127 @@
             return v === '' ? '' : v;
         }
 
-        async function fetchMenuFromGoogleSheet() {
-            try {
-                const freshUrl = FINAL_URL + '&t=' + Date.now();
-                const response = await fetch(freshUrl);
+        // دالة fetch مع Timeout لمنع التعليق
+        async function fetchWithTimeout(resource, options = {}) {
+            const { timeout = 8000 } = options;
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), timeout);
+            const response = await fetch(resource, {
+                ...options,
+                signal: controller.signal
+            });
+            clearTimeout(id);
+            return response;
+        }
+
+        function parseCSV(csvText) {
+            const lines = csvText.split(/\r?\n/).filter(line => line.trim().length > 0);
+            if (lines.length <= 1) return [];
+
+            const items = [];
+            for (let i = 1; i < lines.length; i++) {
+                const cols = parseCSVLine(lines[i]);
+                if (cols.length < 2 || !cols[1]) continue;
+
+                const category = cols[0] ? cols[0].trim() : "عام";
+                const name = cols[1] ? cols[1].trim() : "";
+
+                if (category.includes('عروض') || category.includes('العروض') || category.toLowerCase().includes('offer')) continue;
                 
-                if (!response.ok) throw new Error("HTTP error " + response.status);
-                
-                const csvText = await response.text();
-                const lines = csvText.split(/\r?\n/).filter(line => line.trim().length > 0);
-                
-                if (lines.length <= 1) {
-                    console.warn("الشيت فاضي أو مفيش صفوف بيانات.");
-                    return [];
+                const priceNormal = cleanVal(cols[2]);
+                let descRaw = cols[3] ? cols[3].trim() : "";
+
+                const rumiMatch = descRaw.match(/رومي\s*[\|:]\s*(\d+)/);
+                const mozzMatch = descRaw.match(/موتزاريلا\s*[\|:]\s*(\d+)/);
+
+                let rumiPrice = rumiMatch ? rumiMatch[1] : null;
+                let mozzPrice = mozzMatch ? mozzMatch[1] : null;
+
+                descRaw = descRaw.replace(/رومي\s*[\|:]\s*\d+/g, '')
+                                 .replace(/موتزاريلا\s*[\|:]\s*\d+/g, '')
+                                 .replace(/^\s*-\s*/, '')
+                                 .trim();
+
+                let cleanImageName = name.replace(/^\.\/images\//, '').replace(/^images\//, '');
+                cleanImageName = cleanImageName.replace(/\.(png|jpeg|webp|jpg)$/i, '');
+                let img = cleanImageName ? `${IMAGES_PATH}${cleanImageName}.jpg` : `${IMAGES_PATH}default.jpg`;
+
+                let variants = [];
+                if (priceNormal !== '' && priceNormal !== '0') {
+                    variants.push({ size: 'سادة', price: priceNormal });
+                }
+                if (rumiPrice) {
+                    variants.push({ size: 'رومي', price: rumiPrice });
+                }
+                if (mozzPrice) {
+                    variants.push({ size: 'موتزاريلا', price: mozzPrice });
                 }
 
-                const items = [];
-                for (let i = 1; i < lines.length; i++) {
-                    const cols = parseCSVLine(lines[i]);
-                    if (cols.length < 2 || !cols[1]) continue;
-
-                    const category = cols[0] ? cols[0].trim() : "عام";
-                    const name = cols[1] ? cols[1].trim() : "";
-
-                    if (category.includes('عروض') || category.includes('العروض') || category.toLowerCase().includes('offer')) continue;
-                    
-                    const priceNormal = cleanVal(cols[2]);
-                    let descRaw = cols[3] ? cols[3].trim() : "";
-
-                    const rumiMatch = descRaw.match(/رومي\s*[\|:]\s*(\d+)/);
-                    const mozzMatch = descRaw.match(/موتزاريلا\s*[\|:]\s*(\d+)/);
-
-                    let rumiPrice = rumiMatch ? rumiMatch[1] : null;
-                    let mozzPrice = mozzMatch ? mozzMatch[1] : null;
-
-                    descRaw = descRaw.replace(/رومي\s*[\|:]\s*\d+/g, '')
-                                     .replace(/موتزاريلا\s*[\|:]\s*\d+/g, '')
-                                     .replace(/^\s*-\s*/, '')
-                                     .trim();
-
-                    let cleanImageName = name.replace(/^\.\/images\//, '').replace(/^images\//, '');
-                    cleanImageName = cleanImageName.replace(/\.(png|jpeg|webp|jpg)$/i, '');
-                    let img = cleanImageName ? `${IMAGES_PATH}${cleanImageName}.jpg` : `${IMAGES_PATH}default.jpg`;
-
-                    let variants = [];
-                    if (priceNormal !== '' && priceNormal !== '0') {
-                        variants.push({ size: 'سادة', price: priceNormal });
-                    }
-                    if (rumiPrice) {
-                        variants.push({ size: 'رومي', price: rumiPrice });
-                    }
-                    if (mozzPrice) {
-                        variants.push({ size: 'موتزاريلا', price: mozzPrice });
-                    }
-
-                    let defaultPrice = "0";
-                    if (variants.length > 0) {
-                        defaultPrice = variants[0].price;
-                    } else {
-                        defaultPrice = priceNormal || "0";
-                    }
-
-                    items.push({
-                        id: `item_${i}`,
-                        category: category,
-                        name: name,
-                        desc: descRaw,
-                        img: img,
-                        price: defaultPrice,
-                        variants: variants.length > 0 ? variants : null
-                    });
+                let defaultPrice = "0";
+                if (variants.length > 0) {
+                    defaultPrice = variants[0].price;
+                } else {
+                    defaultPrice = priceNormal || "0";
                 }
-                return items;
-            } catch (err) {
-                console.error("خطأ أثناء جلب وتوزيع بيانات الشيت:", err);
-                document.getElementById('menuList').innerHTML = `<p style="text-align:center; padding:30px; color:red; font-weight:bold;">تعذر تحميل المنيو.<br>تفاصيل الخطأ: ${err.message}</p>`;
-                return [];
+
+                items.push({
+                    id: `item_${i}`,
+                    category: category,
+                    name: name,
+                    desc: descRaw,
+                    img: img,
+                    price: defaultPrice,
+                    variants: variants.length > 0 ? variants : null
+                });
             }
+            return items;
+        }
+
+        async function fetchMenuFromGoogleSheet() {
+            const url = GOOGLE_SHEET_CSV_URL + '&t=' + Date.now();
+
+            // 1. تجربة AllOrigins JSON
+            try {
+                console.log("Trying AllOrigins JSON...");
+                const res = await fetchWithTimeout(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`, { timeout: 8000 });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.contents) {
+                        let csv = data.contents.replace(/^\uFEFF/, '');
+                        if (csv.trim().length > 10 && !csv.includes('<!DOCTYPE html>')) {
+                            return parseCSV(csv);
+                        }
+                    }
+                }
+            } catch(e) { console.warn("AllOrigins failed", e); }
+
+            // 2. تجربة CodeTabs
+            try {
+                console.log("Trying CodeTabs...");
+                const res = await fetchWithTimeout(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`, { timeout: 8000 });
+                if (res.ok) {
+                    let csv = await res.text();
+                    csv = csv.replace(/^\uFEFF/, '');
+                    if (csv.trim().length > 10 && !csv.includes('<!DOCTYPE html>')) {
+                        return parseCSV(csv);
+                    }
+                }
+            } catch(e) { console.warn("CodeTabs failed", e); }
+
+            // 3. تجربة CorsProxy
+            try {
+                console.log("Trying CorsProxy...");
+                const res = await fetchWithTimeout(`https://corsproxy.io/?url=${encodeURIComponent(url)}`, { timeout: 8000 });
+                if (res.ok) {
+                    let csv = await res.text();
+                    csv = csv.replace(/^\uFEFF/, '');
+                    if (csv.trim().length > 10 && !csv.includes('<!DOCTYPE html>')) {
+                        return parseCSV(csv);
+                    }
+                }
+            } catch(e) { console.warn("CorsProxy failed", e); }
+
+            throw new Error("فشل الاتصال بالسيرفرات. يرجى التأكد من الإنترنت والمحاولة مرة أخرى.");
         }
 
         function toggleTheme() {
@@ -1727,6 +1768,8 @@
         }
 
         let isCounterRunning = false;
+        let counterTimer = null;
+        
         function startCreativeCounter() {
             if (isCounterRunning) return;
             isCounterRunning = true;
@@ -1737,34 +1780,74 @@
             const duration = 3000;
             const intervalTime = duration / 100;
 
-            const timer = setInterval(() => {
+            if (counterTimer) clearInterval(counterTimer);
+            if (counterEl) counterEl.innerText = '0';
+            if (barFill) barFill.style.width = '0%';
+
+            counterTimer = setInterval(() => {
                 count++;
                 if (count <= 100) {
                     if (counterEl) counterEl.innerText = count;
                     if (barFill) barFill.style.width = count + '%';
                 } else {
-                    clearInterval(timer);
+                    clearInterval(counterTimer);
+                    isCounterRunning = false;
                 }
             }, intervalTime);
         }
 
         async function loadMenu() {
+            const splash = document.getElementById('splash-screen');
+            const menuList = document.getElementById('menuList');
+
+            // إظهار شاشة التحميل وإعادة تعيينها
+            if (splash) {
+                splash.classList.remove('splash-hidden');
+                splash.style.display = 'flex';
+            }
+            menuList.innerHTML = `<p style="text-align:center; padding:30px; color:#555;">جاري تحميل المنيو...</p>`;
+
+            // بدء العداد
             startCreativeCounter();
             renderFooterBranches();
             renderFooterComplaints();
 
-            const freshSheetData = await fetchMenuFromGoogleSheet();
-            
-            if (freshSheetData && freshSheetData.length > 0) {
-                menuData = freshSheetData;
-                preloadImages(menuData).then(() => {
-                    renderNav();
-                });
-            }
+            // الانتظار 3 ثوانٍ كحد أدنى لإنهاء الأنميشن
+            const minLoadingTime = new Promise(resolve => setTimeout(resolve, 3000));
 
-            setTimeout(() => {
-                document.getElementById('splash-screen').classList.add('splash-hidden');
-            }, 3000);
+            try {
+                // جلب البيانات
+                const freshSheetData = await fetchMenuFromGoogleSheet();
+                
+                // الانتظار حتى ينتهي الأنميشن
+                await minLoadingTime;
+
+                if (freshSheetData && freshSheetData.length > 0) {
+                    menuData = freshSheetData;
+                    preloadImages(menuData).then(() => {
+                        renderNav();
+                    });
+                } else {
+                    throw new Error("لا توجد أصناف متاحة حالياً في المنيو.");
+                }
+
+            } catch (err) {
+                await minLoadingTime;
+                console.error("خطأ أثناء تحميل المنيو:", err);
+                menuList.innerHTML = `
+                    <div style="text-align:center; padding:30px; background: var(--white); border-radius: 15px; border: 1px solid var(--border-color); margin: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+                        <p style="color:#e65100; font-weight:bold; margin-bottom: 15px; font-size: 1.1rem;">⚠️ ${err.message}</p>
+                        <button onclick="loadMenu()" style="padding:12px 24px; background:var(--accent); color:#fff; border:none; border-radius:12px; cursor:pointer; font-weight:bold; font-family:'Cairo', sans-serif; font-size: 1rem; box-shadow: 0 4px 10px rgba(230, 81, 0, 0.3);">🔄 إعادة المحاولة</button>
+                    </div>`;
+            } finally {
+                // إخفاء شاشة التحميل مهما حدث
+                if (splash) {
+                    splash.classList.add('splash-hidden');
+                    setTimeout(() => {
+                        splash.style.display = 'none';
+                    }, 600);
+                }
+            }
         }
 
         function renderFooterComplaints() {
@@ -2187,6 +2270,7 @@
 
         function dismissClientActiveOrder() {}
 
+        // بدء التطبيق
         loadMenu();
     </script>
 </body>
