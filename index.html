@@ -238,7 +238,7 @@
             height: 32px;
             background: var(--accent);
             border-radius: 10px;
-            display: flex;
+            display: none; /* مخفي افتراضياً */
             align-items: center;
             justify-content: center;
             cursor: pointer;
@@ -1128,7 +1128,7 @@
                         <span style="font-size: 1.25rem;">🛒</span>
                     </div>
                 </div>
-                <button class="install-pwa-btn" id="installPwaBtn" onclick="triggerUniversalInstall()" style="display: flex !important;">
+                <button class="install-pwa-btn" id="installPwaBtn" onclick="triggerUniversalInstall()">
                     <span>📲</span>
                     <span>تثبيت</span>
                 </button>
@@ -1423,15 +1423,15 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
         import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, onSnapshot, addDoc, deleteDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-        // ⚠️ تم إرجاع الإعدادات القديمة مؤقتاً ليعمل التطبيق فوراً، ويجب تغييرها لمشروعك الجديد لاحقاً
+        // ✅ إعدادات Firebase الخاصة بك
         const firebaseConfig = {
-          apiKey: "AIzaSyB2-vW_IBONJS6pbY5p683QGgwSWgT1Y-c",
-          authDomain: "crepe-hekaya.firebaseapp.com",
-          projectId: "crepe-hekaya",
-          storageBucket: "crepe-hekaya.firebasestorage.app",
-          messagingSenderId: "802230455427",
-          appId: "1:802230455427:web:fe93bcaa93a624a6e14736",
-          measurementId: "G-62N7519GFH"
+          apiKey: "AIzaSyDmfFQebI0F8z6_jyn-dqqXVKDjrWVzrV0",
+          authDomain: "dalaa-kersh.firebaseapp.com",
+          projectId: "dalaa-kersh",
+          storageBucket: "dalaa-kersh.firebasestorage.app",
+          messagingSenderId: "342388919338",
+          appId: "1:342388919338:web:bf1e0d4c3fb5b4c01ac753",
+          measurementId: "G-C889TX533T"
         };
 
         const app = initializeApp(firebaseConfig);
@@ -1461,13 +1461,14 @@
         let deferredPrompt = null;
         const installBtn = document.getElementById('installPwaBtn');
 
+        // إخفاء الزرار افتراضياً بمجرد تحميل الصفحة
+        if (installBtn) installBtn.style.display = 'none';
+
         function checkAndHandleInstallBtn() {
+            // لو التطبيق متثبت أو مفتوح كـ PWA، الزرار يختفي تماماً
             if (isRunningInsidePWA() || localStorage.getItem('app_installed_locally') === 'true') {
                 if (installBtn) installBtn.style.setProperty('display', 'none', 'important');
                 return true;
-            }
-            if (installBtn) {
-                installBtn.style.setProperty('display', 'flex', 'important');
             }
             return false;
         }
@@ -1475,6 +1476,7 @@
         window.addEventListener('beforeinstallprompt', (e) => {
             e.preventDefault();
             deferredPrompt = e;
+            // الزرار يظهر بس لو التطبيق مش متثبت
             if (!checkAndHandleInstallBtn() && installBtn) {
                 installBtn.style.display = 'flex';
             }
@@ -1488,18 +1490,19 @@
                 deferredPrompt.userChoice.then((choiceResult) => {
                     if (choiceResult.outcome === 'accepted') {
                         localStorage.setItem('app_installed_locally', 'true');
-                        if (installBtn) installBtn.style.display = 'none';
+                        if (installBtn) installBtn.style.display = 'none'; // يختفي فور التثبيت
                     }
                     deferredPrompt = null;
                 });
             } else {
+                // لو المستخدم فتح من سفاري أو متصفح مش بيدعم beforeinstallprompt
                 alert("لتثبيت التطبيق على موبايلك:\n\n1. اضغط على الثلاث نقاط (⋮) في أعلى المتصفح.\n2. اختر (تثبيت التطبيق) أو (Add to Home screen).");
             }
         }
 
         window.addEventListener('appinstalled', () => {
             localStorage.setItem('app_installed_locally', 'true');
-            if (installBtn) installBtn.style.display = 'none';
+            if (installBtn) installBtn.style.display = 'none'; // يختفي بمجرد التثبيت
             deferredPrompt = null;
         });
 
@@ -1682,12 +1685,23 @@
                     const priceNormal = cleanVal(cols[2]);
                     let descRaw = cols[3] ? cols[3].trim() : "";
 
+                    // Parse (L-M-S) like (145-115-85)
+                    const sizeMatch = descRaw.match(/\((\d+)\s*-\s*(\d+)\s*-\s*(\d+)\)/);
+                    let sPrice = null, mPrice = null, lPrice = null;
+                    if (sizeMatch) {
+                        lPrice = sizeMatch[1];
+                        mPrice = sizeMatch[2];
+                        sPrice = sizeMatch[3];
+                        descRaw = descRaw.replace(sizeMatch[0], '').trim();
+                    }
+
+                    // Parse Rumi/Mozzarella
                     const rumiMatch = descRaw.match(/رومي\s*[\|:]\s*(\d+)/);
                     const mozzMatch = descRaw.match(/موتزاريلا\s*[\|:]\s*(\d+)/);
-
                     let rumiPrice = rumiMatch ? rumiMatch[1] : null;
                     let mozzPrice = mozzMatch ? mozzMatch[1] : null;
 
+                    // Clean description
                     descRaw = descRaw.replace(/رومي\s*[\|:]\s*\d+/g, '')
                                      .replace(/موتزاريلا\s*[\|:]\s*\d+/g, '')
                                      .replace(/^\s*-\s*/, '')
@@ -1698,14 +1712,23 @@
                     let img = cleanImageName ? `${IMAGES_PATH}${cleanImageName}.jpg` : `${IMAGES_PATH}default.jpg`;
 
                     let variants = [];
-                    if (priceNormal !== '' && priceNormal !== '0') {
-                        variants.push({ size: 'سادة', price: priceNormal });
-                    }
-                    if (rumiPrice) {
-                        variants.push({ size: 'رومي', price: rumiPrice });
-                    }
-                    if (mozzPrice) {
-                        variants.push({ size: 'موتزاريلا', price: mozzPrice });
+                    
+                    if (sPrice || mPrice || lPrice) {
+                        if (sPrice) variants.push({ size: 'S', price: sPrice });
+                        if (mPrice) variants.push({ size: 'M', price: mPrice });
+                        if (lPrice) variants.push({ size: 'L', price: lPrice });
+                    } else {
+                        if (rumiPrice && mozzPrice) {
+                            variants.push({ size: 'عادي', price: priceNormal });
+                            variants.push({ size: 'رومي', price: rumiPrice });
+                            variants.push({ size: 'موتزاريلا', price: mozzPrice });
+                        } else if (rumiPrice) {
+                            variants.push({ size: 'عادي', price: priceNormal });
+                            variants.push({ size: 'رومي', price: rumiPrice });
+                        } else if (mozzPrice) {
+                            variants.push({ size: 'عادي', price: priceNormal });
+                            variants.push({ size: 'موتزاريلا', price: mozzPrice });
+                        }
                     }
 
                     let defaultPrice = "0";
@@ -1813,7 +1836,7 @@
             const counterEl = document.getElementById('loadPercentage');
             const barFill = document.getElementById('progressBarFill');
             let count = 0;
-            const duration = 3000;
+            const duration = 4000; // 4 ثواني
             const intervalTime = duration / 100;
 
             const timer = setInterval(() => {
@@ -2115,7 +2138,7 @@
 
             setTimeout(() => {
                 document.getElementById('splash-screen').classList.add('splash-hidden');
-            }, 3000);
+            }, 4000); // 4 ثواني
         }
 
         function renderFooterBranches() {
@@ -2162,8 +2185,8 @@
             });
             
             document.getElementById('menuList').innerHTML = menuData.filter(i => i.category === cat).map((item, idx) => {
-                const hasVariants = item.variants && item.variants.length > 0;
-                const initialPrice = hasVariants ? item.variants[0].price : item.price;
+                const hasVariants = item.variants && item.variants.length > 1; 
+                const initialPrice = item.variants && item.variants.length > 0 ? item.variants[0].price : item.price;
                 const initialSize = hasVariants ? item.variants[0].size : '';
                 const displayPrice = initialPrice + ' ج.م';
 
